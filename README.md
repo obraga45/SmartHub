@@ -92,6 +92,29 @@ npm run build
 npm start
 ```
 
+## Deploy na Vercel
+
+O arquivo `.env.local` **não vai para o GitHub**. Sem as variáveis no painel da Vercel, cotações e CEP funcionam, mas Airtable (salvar/histórico/sync) fica offline.
+
+1. Abra o projeto em [vercel.com/dashboard](https://vercel.com/dashboard).
+2. Vá em **Settings → Environment Variables**.
+3. Cadastre estas chaves (marque Production, Preview e Development):
+
+| Nome | Valor |
+|---|---|
+| `AIRTABLE_API_KEY` | Personal Access Token (`pat...`) — o mesmo do `.env.local` |
+| `AIRTABLE_BASE_ID` | ID da base (`app...`) |
+| `AIRTABLE_TABLE_NAME` | Nome da tabela **ou** o ID `tbl...` |
+| `SLACK_WEBHOOK_URL` | Opcional. Deixe vazio se não for usar alerta |
+
+4. Em **Deployments**, abra o deploy atual e clique em **Redeploy** (não use o cache, se a opção aparecer).
+5. Teste no site publicado:
+   - `/api/status` — deve mostrar `airtable.configured: true`
+   - `/api/currency` — cotações (AwesomeAPI, com fallback se a cota estourar)
+   - aba **Histórico** — registros do Airtable
+
+Documentação oficial: [Environment Variables na Vercel](https://vercel.com/docs/environment-variables/managing-environment-variables).
+
 ## Como criar a base no Airtable
 
 1. Acesse [https://airtable.com](https://airtable.com) e crie um workspace.

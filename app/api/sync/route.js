@@ -4,9 +4,11 @@ import { fetchCurrencies, toAirtableCurrencyFields } from "@/lib/currency";
 import { notifyVariationAlerts } from "@/lib/webhook";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+export const maxDuration = 15;
 
 async function runSync() {
-  const quotes = await fetchCurrencies();
+  const { quotes, source } = await fetchCurrencies();
   const fieldsList = quotes.map(toAirtableCurrencyFields);
   const saved = await createRecords(fieldsList);
   const webhook = await notifyVariationAlerts(quotes);
@@ -14,6 +16,7 @@ async function runSync() {
   return {
     ok: true,
     syncedAt: new Date().toISOString(),
+    source,
     quotes,
     savedCount: saved.length,
     webhook,

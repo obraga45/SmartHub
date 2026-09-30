@@ -6,11 +6,14 @@
 # next
 /.next
 /out
+.vercel
 
 # env
 .env
 .env.local
 .env.*.local
+.env*
+!.env.local.example
 
 # debug
 npm-debug.log*
@@ -24,3 +27,4 @@ Thumbs.db
 # ide
 .idea
 .vscode
+.env*

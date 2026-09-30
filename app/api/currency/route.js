@@ -2,14 +2,15 @@ import { NextResponse } from "next/server";
 import { fetchCurrencies } from "@/lib/currency";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 export async function GET() {
   try {
-    const quotes = await fetchCurrencies();
+    const { quotes, source } = await fetchCurrencies();
 
     return NextResponse.json({
       ok: true,
-      source: "AwesomeAPI",
+      source,
       updatedAt: new Date().toISOString(),
       quotes,
     });
