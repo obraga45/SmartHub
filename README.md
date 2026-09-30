@@ -4,6 +4,9 @@ Aplicação acadêmica da **UniFECAF** para o tema *Central Inteligente de Monit
 
 O SmartHub consulta cotações em tempo real, valida endereços por CEP, persiste os registros em uma base No-Code (Airtable) e dispara um webhook quando a variação percentual de alguma moeda ultrapassa **0,5%**.
 
+**Demo:** [https://smart-hub-alpha.vercel.app](https://smart-hub-alpha.vercel.app)  
+**Repositório:** [https://github.com/obraga45/SmartHub](https://github.com/obraga45/SmartHub)
+
 ## Tecnologias
 
 - Next.js 14 (App Router)
@@ -11,12 +14,14 @@ O SmartHub consulta cotações em tempo real, valida endereços por CEP, persist
 - Tailwind CSS
 - Lucide React
 - next-themes (Dark / Light Mode)
+- Vercel (deploy)
 
 ## APIs utilizadas
 
 | Integração | Função | Endpoint |
 |---|---|---|
 | **AwesomeAPI** | Cotações USD, EUR e BTC em BRL | `https://economia.awesomeapi.com.br/json/last/USD-BRL,EUR-BRL,BTC-BRL` |
+| **Fallback de cotações** | Usado se a AwesomeAPI estiver em cota | Currency API via jsDelivr / Open ER API |
 | **ViaCEP** | Consulta e validação de endereço | `https://viacep.com.br/ws/{cep}/json/` |
 | **Airtable** | Persistência No-Code (GET/POST) | `https://api.airtable.com/v0/{baseId}/{table}` |
 | **Webhook (Slack, opcional)** | Alerta de variação > 0,5% | `SLACK_WEBHOOK_URL` |
@@ -25,11 +30,12 @@ O SmartHub consulta cotações em tempo real, valida endereços por CEP, persist
 
 As chamadas externas passam por Server Routes do Next.js, protegendo tokens e padronizando as respostas:
 
-- `GET /api/currency` — busca cotações na AwesomeAPI
+- `GET /api/currency` — busca cotações (AwesomeAPI, com fallback)
 - `GET /api/cep?cep=01001000` — valida CEP na ViaCEP
 - `GET /api/airtable` — lista o histórico
 - `POST /api/airtable` — grava um registro (`{ fields }`)
 - `GET` ou `POST /api/sync` — consome cotações, salva no Airtable e dispara o webhook se necessário
+- `GET /api/status` — saúde das integrações (sem expor chaves)
 
 ## Fluxo de integração
 
@@ -40,17 +46,26 @@ flowchart LR
   A --> D[/api/airtable]
   A --> E[/api/sync]
   B --> F[AwesomeAPI]
-  C --> G[ViaCEP]
-  D --> H[Airtable]
+  B -.-> G[Fallback CDN]
+  C --> H[ViaCEP]
+  D --> I[Airtable]
   E --> F
-  E --> H
-  E -->|variacao > 0.5%| I[Webhook Slack]
+  E --> I
+  E -->|variacao > 0.5%| J[Webhook Slack]
 ```
 
 1. O dashboard solicita dados às rotas internas.
 2. `/api/currency` e `/api/cep` consultam APIs públicas e devolvem JSON normalizado.
-3. `/api/airtable` lê e grava registros na tabela `Monitoramento_Financeiro`.
+3. `/api/airtable` lê e grava registros na tabela de monitoramento.
 4. `/api/sync` automatiza o ciclo: cotação → persistência → alerta.
+
+## Interface
+
+- **Aba 1 — Cotações:** cards de USD, EUR e BTC, atualização sob demanda e botão *Sincronizar e salvar*.
+- **Aba 2 — CEP:** busca rápida na ViaCEP e persistência do endereço formatado.
+- **Aba 3 — Histórico:** tabela com os registros consolidados do Airtable.
+- Indicadores visuais de conexão (AwesomeAPI, ViaCEP e Airtable).
+- Alternância Dark / Light Mode.
 
 ## Como configurar e rodar
 
@@ -77,6 +92,8 @@ AIRTABLE_TABLE_NAME=Monitoramento_Financeiro
 SLACK_WEBHOOK_URL=sua_url_webhook_opcional
 ```
 
+O arquivo `.env.local` **não deve ir para o Git**. Só o `.env.local.example` (com placeholders) fica no repositório.
+
 ### 3. Subir o ambiente de desenvolvimento
 
 ```bash
@@ -91,29 +108,6 @@ Acesse [http://localhost:3000](http://localhost:3000).
 npm run build
 npm start
 ```
-
-## Deploy na Vercel
-
-O arquivo `.env.local` **não vai para o GitHub**. Sem as variáveis no painel da Vercel, cotações e CEP funcionam, mas Airtable (salvar/histórico/sync) fica offline.
-
-1. Abra o projeto em [vercel.com/dashboard](https://vercel.com/dashboard).
-2. Vá em **Settings → Environment Variables**.
-3. Cadastre estas chaves (marque Production, Preview e Development):
-
-| Nome | Valor |
-|---|---|
-| `AIRTABLE_API_KEY` | Personal Access Token (`pat...`) — o mesmo do `.env.local` |
-| `AIRTABLE_BASE_ID` | ID da base (`app...`) |
-| `AIRTABLE_TABLE_NAME` | Nome da tabela **ou** o ID `tbl...` |
-| `SLACK_WEBHOOK_URL` | Opcional. Deixe vazio se não for usar alerta |
-
-4. Em **Deployments**, abra o deploy atual e clique em **Redeploy** (não use o cache, se a opção aparecer).
-5. Teste no site publicado:
-   - `/api/status` — deve mostrar `airtable.configured: true`
-   - `/api/currency` — cotações (AwesomeAPI, com fallback se a cota estourar)
-   - aba **Histórico** — registros do Airtable
-
-Documentação oficial: [Environment Variables na Vercel](https://vercel.com/docs/environment-variables/managing-environment-variables).
 
 ## Como criar a base no Airtable
 
@@ -141,17 +135,32 @@ Campos extras recomendados para a aba de CEP (a API envia `typecast: true`):
 | `UF` | Single line text |
 
 5. Gere um **Personal Access Token** em [https://airtable.com/create/tokens](https://airtable.com/create/tokens) com os escopos `data.records:read` e `data.records:write`, além de acesso à base criada.
-6. Copie o **Base ID** (começa com `app...`) nas opções da ajuda da API da base.
-7. Cole o token, o Base ID e o nome da tabela em `.env.local`.
+6. Copie o **Base ID** (começa com `app...`) na URL da base ou em **Help → API documentation**.
+7. Cole o token, o Base ID e o nome (ou o ID `tbl...`) da tabela em `.env.local`.
 8. (Opcional) Crie um Incoming Webhook no Slack e preencha `SLACK_WEBHOOK_URL`. Sem essa variável, a sincronização ainda grava no Airtable; apenas o alerta não é enviado.
 
-## Interface
+## Deploy na Vercel
 
-- **Aba 1 — Cotações:** cards de USD, EUR e BTC, atualização sob demanda e botão *Sincronizar e salvar*.
-- **Aba 2 — CEP:** busca rápida na ViaCEP e persistência do endereço formatado.
-- **Aba 3 — Histórico:** tabela com os registros consolidados do Airtable.
-- Indicadores visuais de conexão (AwesomeAPI, ViaCEP e Airtable).
-- Alternância Dark / Light Mode.
+O arquivo `.env.local` **não vai para o GitHub**. Sem as variáveis no painel da Vercel, cotações e CEP funcionam, mas Airtable (salvar, histórico e sync) fica offline.
+
+1. Conecte o repositório em [vercel.com](https://vercel.com).
+2. Em **Settings → Environment Variables**, cadastre as chaves abaixo (Production, Preview e Development):
+
+| Nome | Valor |
+|---|---|
+| `AIRTABLE_API_KEY` | Personal Access Token (`pat...`) |
+| `AIRTABLE_BASE_ID` | ID da base (`app...`) |
+| `AIRTABLE_TABLE_NAME` | Nome da tabela **ou** o ID `tbl...` |
+| `SLACK_WEBHOOK_URL` | Opcional. Deixe vazio se não for usar alerta |
+
+3. Faça um **Redeploy** depois de salvar as variáveis.
+4. Teste no site publicado:
+   - `/api/status` — deve mostrar `airtable.configured: true`
+   - `/api/currency` — cotações
+   - `/api/cep?cep=01001000` — endereço da Praça da Sé
+   - aba **Histórico** — registros do Airtable
+
+Documentação oficial: [Environment Variables na Vercel](https://vercel.com/docs/environment-variables/managing-environment-variables).
 
 ## Estrutura do projeto
 
@@ -161,9 +170,15 @@ app/
   api/cep/route.js
   api/airtable/route.js
   api/sync/route.js
+  api/status/route.js
   layout.js
   page.js
 components/
 lib/
 .env.local.example
 ```
+
+## Autor
+
+Trabalho acadêmico — UniFECAF  
+Repositório: [obraga45/SmartHub](https://github.com/obraga45/SmartHub)
